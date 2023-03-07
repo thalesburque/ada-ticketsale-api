@@ -2,9 +2,12 @@ package com.ada.ticketsaleapi.domain.service;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+import com.ada.ticketsaleapi.domain.exception.EntidadeNaoEncontradaException;
 import com.ada.ticketsaleapi.domain.exception.VooEsgotadoException;
 import com.ada.ticketsaleapi.domain.model.Bilhete;
+import com.ada.ticketsaleapi.domain.model.Passageiro;
 import com.ada.ticketsaleapi.domain.model.Voo;
 import com.ada.ticketsaleapi.domain.repository.BilheteRepository;
 
@@ -19,27 +22,47 @@ public class BilheteService {
 	@Autowired
 	private VooService vooService;
 	
+	@Autowired
+	private PassageiroService passageiroService;
 	
-    public Mono<Bilhete> emitirBilhete(Bilhete bilhete){
+	@Transactional
+    public Mono<Bilhete> emitirBilhete(Bilhete bilhete) {
     	
         Mono<Voo> vooMono = vooService.getVooById(bilhete.getVooId());
-
+       
+        Mono<Passageiro> passageiroMono = passageiroService
+    			.getPassageiroById(bilhete.getPassageiroId());
+        
+        
         Mono<Bilhete> bilheteMono =  vooMono.flatMap( voo -> {
+        	
+      
         	
             if(voo.getTotalAssentoVendido() >= voo.getTotalAssento()) {
             	return Mono.error(new VooEsgotadoException("O voo esta esgotado"));
             }
             
             voo.setTotalAssentoVendido(voo.getTotalAssentoVendido() +1);
+            
+            bilhete.setNumeroBilhete(voo.getTotalAssentoVendido().toString());
  
             Mono<Bilhete> bilheteEmitido =  bilheteRepository.save(bilhete);
 
             return bilheteEmitido.flatMap(b -> vooService.save(voo).thenReturn(b));
             
-        }).onErrorResume(VooEsgotadoException.class, null);
+        });
 
       return bilheteMono;
-    }
+      
+	}
+	
+	public Mono<Bilhete> getBilheteById(Long id) {
+
+		return Mono.just(id)
+				.flatMap(bilheteRepository::findById)
+				.switchIfEmpty(Mono.error(new EntidadeNaoEncontradaException("Passagem nao encontrada")));
+
+	}
 
 
 }
