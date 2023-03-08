@@ -15,54 +15,50 @@ import reactor.core.publisher.Mono;
 
 @Service
 public class BilheteService {
-	
+
 	@Autowired
 	private BilheteRepository bilheteRepository;
-	
+
 	@Autowired
 	private VooService vooService;
-	
+
 	@Autowired
 	private PassageiroService passageiroService;
-	
+
 	@Transactional
-    public Mono<Bilhete> emitirBilhete(Bilhete bilhete) {
-    	
-        Mono<Voo> vooMono = vooService.getVooById(bilhete.getVooId());
-       
-        Mono<Passageiro> passageiroMono = passageiroService
-    			.getPassageiroById(bilhete.getPassageiroId());
-        
-        
-        Mono<Bilhete> bilheteMono =  vooMono.flatMap( voo -> {
-        	
-      
-        	
-            if(voo.getTotalAssentoVendido() >= voo.getTotalAssento()) {
-            	return Mono.error(new VooEsgotadoException("O voo esta esgotado"));
-            }
-            
-            voo.setTotalAssentoVendido(voo.getTotalAssentoVendido() +1);
-            
-            bilhete.setNumeroBilhete(voo.getTotalAssentoVendido().toString());
- 
-            Mono<Bilhete> bilheteEmitido =  bilheteRepository.save(bilhete);
+	public Mono<Bilhete> emitirBilhete(Bilhete bilhete) {
 
-            return bilheteEmitido.flatMap(b -> vooService.save(voo).thenReturn(b));
-            
-        });
+		Mono<Voo> vooMono = vooService.getVooById(bilhete.getVooId());
 
-      return bilheteMono;
-      
+		Mono<Passageiro> passageiroMono = passageiroService.getPassageiroById(bilhete.getPassageiroId());
+		
+		Mono<Bilhete> bilheteMono = Mono.zip(vooMono, passageiroMono).flatMap(zip -> {
+			
+			Voo voo = zip.getT1();
+
+			if (voo.getTotalAssentoVendido() >= voo.getTotalAssento()) {
+				return Mono.error(new VooEsgotadoException("O voo está esgotado"));
+			} else {
+				voo.setTotalAssentoVendido(voo.getTotalAssentoVendido() +1);
+				bilhete.setNumeroBilhete(voo.getTotalAssentoVendido().toString());
+			}
+			
+			Mono<Bilhete> bilheteEmitido = bilheteRepository.save(bilhete);
+			
+			return bilheteEmitido.flatMap(b -> vooService.save(voo).thenReturn(b));
+
+		});
+
+		return bilheteMono;
+
 	}
+
 	
 	public Mono<Bilhete> getBilheteById(Long id) {
 
-		return Mono.just(id)
-				.flatMap(bilheteRepository::findById)
+		return Mono.just(id).flatMap(bilheteRepository::findById)
 				.switchIfEmpty(Mono.error(new EntidadeNaoEncontradaException("Passagem nao encontrada")));
 
 	}
-
 
 }
